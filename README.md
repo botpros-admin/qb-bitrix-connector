@@ -4,6 +4,7 @@ A bi-directional integration connector that synchronizes data between **QuickBoo
 
 ## Table of Contents
 
+- [How It Works (Visual Guide)](#how-it-works-visual-guide)
 - [Overview](#overview)
 - [Live Data Analysis](#live-data-analysis)
 - [QuickBooks Schema Reference](#quickbooks-schema-reference)
@@ -20,6 +21,116 @@ A bi-directional integration connector that synchronizes data between **QuickBoo
 - [Troubleshooting](#troubleshooting)
 - [File Structure](#file-structure)
 - [API Reference](#api-reference)
+
+---
+
+## How It Works (Visual Guide)
+
+### The Big Picture
+
+```mermaid
+flowchart LR
+    QB["<b>QuickBooks Desktop</b><br/>Your Accounting Data"]
+    Connector["<b>Connector</b><br/>Syncs Automatically"]
+    Bitrix["<b>Bitrix24 CRM</b><br/>Your Sales Data"]
+
+    QB <--->|"two-way sync"| Connector
+    Connector <--->|"two-way sync"| Bitrix
+```
+
+**In plain English:** When you update a customer in QuickBooks, it automatically updates in Bitrix24. When you create a deal in Bitrix24, it can create an invoice in QuickBooks. The connector keeps both systems in sync.
+
+---
+
+### What Syncs With What?
+
+```mermaid
+flowchart LR
+    subgraph QB["QuickBooks"]
+        QBC["Customers"]
+        QBI["Invoices"]
+        QBE["Estimates"]
+        QBP["Products/Services"]
+    end
+
+    subgraph Bitrix["Bitrix24"]
+        BC["Contacts & Companies"]
+        BD["Deals"]
+        BI["Invoices"]
+        BP["Products"]
+    end
+
+    QBC <--->|"match by name"| BC
+    QBI <--->|"linked to deals"| BD
+    QBE --->|"becomes quote"| BD
+    QBP <--->|"same products"| BP
+```
+
+---
+
+### The Sync Process (Step by Step)
+
+```mermaid
+flowchart TB
+    subgraph Step1["<b>STEP 1: Web Connector Polls</b>"]
+        WC["QuickBooks Web Connector<br/>checks for updates<br/>(every few minutes)"]
+    end
+
+    subgraph Step2["<b>STEP 2: Connector Processes</b>"]
+        direction LR
+        Check["Check for<br/>changes"]
+        Map["Map IDs<br/>between systems"]
+        Queue["Queue any<br/>pending updates"]
+    end
+
+    subgraph Step3["<b>STEP 3: Data Syncs Both Ways</b>"]
+        direction LR
+        ToB["Push QB changes<br/>→ Bitrix24"]
+        ToQ["Push Bitrix24 changes<br/>→ QuickBooks"]
+    end
+
+    subgraph Step4["<b>STEP 4: Save State</b>"]
+        DB[("SQLite Database<br/>remembers what synced")]
+    end
+
+    Step1 --> Step2
+    Step2 --> Step3
+    Step3 --> Step4
+    Step4 -.->|"repeat"| Step1
+```
+
+---
+
+### Technical Architecture
+
+```mermaid
+flowchart TB
+    subgraph QBSide["QuickBooks Desktop (Windows)"]
+        QBApp["QuickBooks Enterprise 24.0"]
+        WebConn["Web Connector"]
+        QBApp <--> WebConn
+    end
+
+    subgraph ConnectorService["Connector Service (localhost:8080)"]
+        SOAP["SOAP Service<br/><i>handles Web Connector</i>"]
+        SyncMgr["Sync Manager<br/><i>orchestrates sync</i>"]
+        B24Client["Bitrix24 Client<br/><i>REST API calls</i>"]
+        SQLite[("SQLite DB<br/><i>ID maps & state</i>")]
+
+        SOAP <--> SyncMgr
+        SyncMgr <--> B24Client
+        SyncMgr <--> SQLite
+    end
+
+    subgraph BitrixSide["Bitrix24 CRM (Cloud/On-Premise)"]
+        B24API["REST API"]
+        B24Data["CRM Data<br/>Contacts, Deals, Products"]
+        B24API <--> B24Data
+    end
+
+    WebConn <-->|"qbXML/SOAP"| SOAP
+    B24Client <-->|"REST/JSON"| B24API
+```
 
 ---
 
