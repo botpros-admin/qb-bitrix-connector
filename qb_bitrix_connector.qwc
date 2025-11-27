@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<QBWCXML>
+    <AppName>QB-Bitrix24 Connector</AppName>
+    <AppID></AppID>
+    <AppURL>http://localhost:8080/soap/</AppURL>
+    <AppDescription>Syncs QuickBooks Enterprise with Bitrix24 CRM</AppDescription>
+    <AppSupport>http://localhost:8080/</AppSupport>
+    <UserName>qbconnector</UserName>
+    <OwnerID>{90A44FB7-33D9-4815-AC85-AC86A7E7D1EB}</OwnerID>
+    <FileID>{90A44FB8-33D9-4815-AC85-AC86A7E7D1EB}</FileID>
+    <QBType>QBFS</QBType>
+    <Scheduler>
+        <RunEveryNMinutes>5</RunEveryNMinutes>
+    </Scheduler>
+    <IsReadOnly>false</IsReadOnly>
+</QBWCXML>
