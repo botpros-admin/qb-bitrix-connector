@@ -1,11 +1,123 @@
 # QB-Bitrix24 Connector
 
-Bi-directional sync between **QuickBooks Desktop** and **Bitrix24 CRM**.
-
 ```mermaid
-flowchart LR
-    QB["QuickBooks Desktop"] <-->|"auto sync"| C["Connector"] <-->|"auto sync"| B24["Bitrix24 CRM"]
+%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#1a1a2e', 'primaryTextColor': '#fff', 'primaryBorderColor': '#7c3aed', 'lineColor': '#a78bfa', 'secondaryColor': '#374151', 'tertiaryColor': '#1f2937', 'edgeLabelBackground': '#1a1a2e'}}}%%
+flowchart TB
+    subgraph OVERVIEW["📊 QB-BITRIX24 CONNECTOR: BI-DIRECTIONAL SYNC SYSTEM"]
+        direction TB
+
+        subgraph QB_SIDE["💼 QuickBooks Desktop Environment"]
+            direction TB
+            QB_APP["🖥️ QuickBooks Desktop<br/>Enterprise Edition"]
+            WEB_CONN["🔌 Web Connector<br/>(QB Add-in)"]
+            QWC_FILE["📄 .qwc Config File<br/>Service Definition"]
+
+            QB_APP <--> WEB_CONN
+            QWC_FILE -.->|"configures"| WEB_CONN
+
+            subgraph QB_DATA["📁 QuickBooks Data"]
+                CUSTOMERS["👥 Customers"]
+                INVOICES["📋 Invoices"]
+                ESTIMATES["📝 Estimates"]
+                PRODUCTS_QB["📦 Products/Items"]
+            end
+            QB_APP <--> QB_DATA
+        end
+
+        subgraph CONNECTOR["⚙️ Connector Service (localhost:8080)"]
+            direction TB
+
+            subgraph ENDPOINTS["🌐 Endpoints"]
+                SOAP_EP["SOAP /soap/<br/>qbXML Protocol"]
+                REST_EP["REST /bitrix24/webhook<br/>Event Handler"]
+                STATUS_EP["GET /status<br/>Health Check"]
+            end
+
+            subgraph CORE["🔧 Core Components"]
+                SYNC_MGR["🔄 Sync Manager<br/>Orchestration"]
+                QB_CLIENT["📤 qbXML Builder<br/>📥 qbXML Parser"]
+                B24_CLIENT["🔗 Bitrix24 Client<br/>REST API"]
+            end
+
+            subgraph STORAGE["💾 Local Storage"]
+                SQLITE[("🗄️ SQLite DB<br/>sync_state.db")]
+                LOGS["📝 connector.log"]
+            end
+
+            SOAP_EP <--> SYNC_MGR
+            REST_EP <--> SYNC_MGR
+            SYNC_MGR <--> QB_CLIENT
+            SYNC_MGR <--> B24_CLIENT
+            SYNC_MGR <--> SQLITE
+            SYNC_MGR -.-> LOGS
+        end
+
+        subgraph B24_SIDE["☁️ Bitrix24 Cloud CRM"]
+            direction TB
+            B24_API["🌐 REST API<br/>Webhook Endpoint"]
+
+            subgraph B24_DATA["📁 CRM Data"]
+                CONTACTS["👤 Contacts"]
+                COMPANIES["🏢 Companies"]
+                DEALS["💰 Deals"]
+                PRODUCTS_B24["📦 Products"]
+            end
+
+            subgraph B24_EVENTS["📡 Outbound Events"]
+                EVT_ADD["OnCrmContactAdd"]
+                EVT_UPD["OnCrmContactUpdate"]
+                EVT_DEAL["OnCrmDealUpdate"]
+            end
+
+            B24_API <--> B24_DATA
+            B24_DATA -.-> B24_EVENTS
+        end
+
+        subgraph SYNC_FLOW["🔄 Sync Flow"]
+            direction LR
+            POLL["⏱️ Poll Every<br/>N Minutes"]
+            CHECK["🔍 Check Both<br/>Systems"]
+            PUSH["📤 Push<br/>Updates"]
+            SAVE["💾 Save<br/>State"]
+
+            POLL --> CHECK --> PUSH --> SAVE
+            SAVE -.->|"repeat"| POLL
+        end
+    end
+
+    %% Main connections between systems
+    WEB_CONN <-->|"qbXML<br/>SOAP"| SOAP_EP
+    B24_CLIENT <-->|"HTTPS<br/>REST"| B24_API
+    B24_EVENTS -.->|"webhooks"| REST_EP
+
+    %% Data mapping connections
+    CUSTOMERS <-.->|"bi-directional"| CONTACTS
+    CUSTOMERS <-.->|"bi-directional"| COMPANIES
+    INVOICES <-.->|"bi-directional"| DEALS
+    ESTIMATES -.->|"one-way"| DEALS
+    PRODUCTS_QB <-.->|"bi-directional"| PRODUCTS_B24
+
+    %% Styling
+    classDef qbStyle fill:#2563eb,stroke:#60a5fa,stroke-width:2px,color:#fff
+    classDef connectorStyle fill:#7c3aed,stroke:#a78bfa,stroke-width:2px,color:#fff
+    classDef b24Style fill:#059669,stroke:#34d399,stroke-width:2px,color:#fff
+    classDef dataStyle fill:#374151,stroke:#9ca3af,stroke-width:1px,color:#fff
+    classDef flowStyle fill:#dc2626,stroke:#f87171,stroke-width:2px,color:#fff
+
+    class QB_APP,WEB_CONN,QWC_FILE qbStyle
+    class SOAP_EP,REST_EP,STATUS_EP,SYNC_MGR,QB_CLIENT,B24_CLIENT,SQLITE,LOGS connectorStyle
+    class B24_API,EVT_ADD,EVT_UPD,EVT_DEAL b24Style
+    class CUSTOMERS,INVOICES,ESTIMATES,PRODUCTS_QB,CONTACTS,COMPANIES,DEALS,PRODUCTS_B24 dataStyle
+    class POLL,CHECK,PUSH,SAVE flowStyle
 ```
+
+<div align="center">
+
+**Bi-directional sync between QuickBooks Desktop and Bitrix24 CRM**
+
+*Customers ↔ Contacts/Companies • Invoices ↔ Deals • Products ↔ Products • Estimates → Deals*
+
+</div>
 
 ---
 
