@@ -5,6 +5,8 @@ A bi-directional integration connector that synchronizes data between **QuickBoo
 ## Table of Contents
 
 - [Overview](#overview)
+- [Live Data Analysis](#live-data-analysis)
+- [QuickBooks Schema Reference](#quickbooks-schema-reference)
 - [Architecture](#architecture)
 - [Environment Details](#environment-details)
 - [Prerequisites](#prerequisites)
@@ -14,6 +16,7 @@ A bi-directional integration connector that synchronizes data between **QuickBoo
 - [QuickBooks Web Connector Setup](#quickbooks-web-connector-setup)
 - [Running the Connector](#running-the-connector)
 - [Data Mapping](#data-mapping)
+- [Field Reference](#field-reference)
 - [Troubleshooting](#troubleshooting)
 - [File Structure](#file-structure)
 - [API Reference](#api-reference)
@@ -31,16 +34,150 @@ This connector enables automated synchronization between QuickBooks Desktop Ente
 - **Entity mapping**: Tracks ID relationships between QB and Bitrix24 records
 - **Incremental sync**: Only syncs records modified since the last sync
 - **SQLite database**: Stores sync state, ID mappings, and queue items locally
+- **Complete qbXML support**: Access to all 35+ QuickBooks entities with 700+ fields
 
 ### What Gets Synced
 
-| QuickBooks Entity | Bitrix24 Entity | Direction |
-|-------------------|-----------------|-----------|
-| Customers | Contacts / Companies | QB ↔ Bitrix24 |
-| Vendors | Contacts (vendor type) | QB → Bitrix24 |
-| Items (Products/Services) | Products | QB ↔ Bitrix24 |
-| Invoices | Deals | QB → Bitrix24 |
-| Estimates | Deals (estimate stage) | QB → Bitrix24 |
+| QuickBooks Entity | Bitrix24 Entity | Direction | Priority |
+|-------------------|-----------------|-----------|----------|
+| Customers | Contacts / Companies | QB ↔ Bitrix24 | HIGH |
+| Vendors | Contacts (vendor type) | QB → Bitrix24 | MEDIUM |
+| Items (Products/Services) | Products | QB ↔ Bitrix24 | HIGH |
+| Invoices | Deals / Invoices | QB ↔ Bitrix24 | HIGH |
+| Estimates | Deals (estimate stage) | QB → Bitrix24 | MEDIUM |
+
+---
+
+## Live Data Analysis
+
+### Bitrix24 Instance Data (as of 2025-11-26)
+
+Based on actual data discovery from the connected Bitrix24 instance at `hartzell.app`:
+
+| Bitrix24 Entity | Record Count | Maps To QB | Sync Priority |
+|-----------------|--------------|------------|---------------|
+| **Contacts** | 560 | Customer | HIGH |
+| **Companies** | 81 | Customer (CompanyName) | HIGH |
+| **Leads** | 716 | Pre-customer (conversion) | LOW |
+| **Deals** | 74 | Invoice / Estimate | HIGH |
+| **Invoices** | 4 | Invoice | HIGH |
+| **Quotes** | 0 | Estimate | MEDIUM |
+| **Products** | 8 | ItemService | HIGH |
+| **Activities** | 2,523 | No QB equivalent | N/A |
+| **Users** | 41 | SalesRep | LOW |
+
+### Deal Pipeline Structure
+
+The Bitrix24 instance has 3 deal pipelines:
+
+1. **Default Pipeline** (Sales)
+   - NEW → IN_PROCESS → FINAL_INVOICE → WON / LOSE
+
+2. **Work Order Pipeline**
+   - Custom stages for work orders
+
+3. **Subcontractor Project Pipeline**
+   - Custom stages for subcontractor management
+
+### Key Data Fields in Use
+
+**Contacts (560 records)**
+- NAME, LAST_NAME (populated)
+- PHONE, EMAIL (multi-value arrays)
+- COMPANY_ID (links to Companies)
+- ASSIGNED_BY_ID (links to Users)
+- SOURCE_ID, TYPE_ID (categorization)
+
+**Companies (81 records)**
+- TITLE (company name)
+- ADDRESS, ADDRESS_CITY, ADDRESS_PROVINCE, ADDRESS_POSTAL_CODE
+- CURRENCY_ID (multi-currency support)
+- INDUSTRY (business type)
+
+**Deals (74 records)**
+- TITLE, OPPORTUNITY (deal value)
+- STAGE_ID (pipeline stage)
+- COMPANY_ID, CONTACT_ID (relationships)
+- ASSIGNED_BY_ID (sales rep)
+- CATEGORY_ID (pipeline)
+
+**Products (8 records)**
+- NAME, CODE
+- PRICE, CURRENCY_ID
+- SECTION_ID (category)
+
+---
+
+## QuickBooks Schema Reference
+
+The connector supports **35 QuickBooks entities** with **719+ fields** based on qbXML SDK 16.0 for QuickBooks Enterprise.
+
+### List Entities (ID: ListID)
+
+| Entity | Fields | Description |
+|--------|--------|-------------|
+| **Customer** | 57 | Customers, jobs, sub-customers |
+| **Vendor** | 49 | Vendors/suppliers |
+| **ItemInventory** | 35 | Inventory items with tracking |
+| **ItemService** | 18 | Service items |
+| **ItemNonInventory** | 18 | Non-inventory items |
+| **ItemOtherCharge** | 17 | Shipping, handling charges |
+| **ItemDiscount** | 16 | Discount items |
+| **ItemGroup** | 15 | Bundled items |
+| **ItemSubtotal** | 11 | Subtotal items |
+| **ItemSalesTax** | 14 | Tax items |
+| **ItemSalesTaxGroup** | 11 | Combined tax groups |
+| **Account** | 25 | Chart of Accounts |
+| **Class** | 10 | Job costing classes |
+| **Employee** | 34 | Employees |
+| **Terms** | 13 | Payment terms (Net 30, etc.) |
+| **CustomerType** | 9 | Customer categories |
+| **VendorType** | 9 | Vendor categories |
+| **JobType** | 9 | Job categories |
+| **PaymentMethod** | 7 | Payment methods |
+| **ShipMethod** | 6 | Shipping methods |
+| **SalesTaxCode** | 10 | Tax codes |
+| **PriceLevel** | 10 | Price levels |
+| **SalesRep** | 7 | Sales representatives |
+| **Currency** | 11 | Multi-currency |
+| **InventorySite** | 14 | Inventory locations (Enterprise) |
+| **UnitOfMeasureSet** | 10 | Units of measure |
+
+### Transaction Entities (ID: TxnID)
+
+| Entity | Fields | Description |
+|--------|--------|-------------|
+| **Invoice** | 46 | Sales invoices |
+| **Estimate** | 34 | Quotes/estimates |
+| **SalesOrder** | 38 | Sales orders |
+| **PurchaseOrder** | 38 | Purchase orders |
+| **Bill** | 26 | Vendor bills |
+| **ReceivePayment** | 21 | Customer payments |
+| **CreditMemo** | 36 | Credit memos |
+| **TimeTracking** | 17 | Time entries |
+| **Company** | 18 | Company info |
+
+### QuickBooks Data Types
+
+| Type | Description | Format | Python Type |
+|------|-------------|--------|-------------|
+| `IDTYPE` | QuickBooks unique ID | `80000001-1234567890` | str |
+| `STRTYPE` | String value | Variable length | str |
+| `BOOLTYPE` | Boolean | `true` / `false` | bool |
+| `INTTYPE` | Integer | Whole number | int |
+| `FLOATTYPE` | Float | Decimal number | float |
+| `AMTTYPE` | Money | `XXXX.XX` (2 decimals) | Decimal |
+| `PRICETYPE` | Price | `XXXX.XXXXX` (5 decimals) | Decimal |
+| `PERCENTTYPE` | Percentage | `XX.XX` | Decimal |
+| `QUANTYPE` | Quantity | `XXXX.XXXXX` (5 decimals) | Decimal |
+| `DATETYPE` | Date | `YYYY-MM-DD` | date |
+| `DATETIMETYPE` | DateTime | `YYYY-MM-DDTHH:MM:SS` | datetime |
+| `DURATIONTYPE` | Duration | `PT8H30M0S` | timedelta |
+| `GUIDTYPE` | External GUID | `{XXXXXXXX-XXXX-...}` | str |
+| `ENUMTYPE` | Enumeration | Predefined values | str |
+| `REF` | Reference | ListID + FullName | dict |
+| `ADDRESS` | Address block | Addr1-5, City, State, etc. | dict |
+| `LIST` | Repeating items | Can contain multiple | list |
 
 ---
 
@@ -74,6 +211,35 @@ This connector enables automated synchronization between QuickBooks Desktop Ente
 │  └─────────────────┘  └─────────────────┘  └─────────────────────────┘  │
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
+```
+
+### Data Flow
+
+```
+                    ┌─────────────────────────────────────┐
+                    │         SYNC FLOW DIAGRAM           │
+                    └─────────────────────────────────────┘
+
+    BITRIX24                    CONNECTOR                    QUICKBOOKS
+    ────────                    ─────────                    ──────────
+
+    560 Contacts ─────────────► Customer Sync ◄───────────── Customers
+     81 Companies ────────────►     ↑↓        ◄───────────── (with jobs)
+                                    │
+     74 Deals ────────────────► Invoice/Est Sync ◄────────── Invoices
+      4 Invoices ─────────────►     ↑↓         ◄────────── Estimates
+                                    │
+      8 Products ─────────────► Item Sync ◄───────────────── Items
+                                    ↑↓                       (Service)
+                                    │
+     41 Users ────────────────► SalesRep Map ◄────────────── SalesReps
+                                    │
+                            ┌───────┴───────┐
+                            │ SQLite DB     │
+                            │ - ID mappings │
+                            │ - Sync state  │
+                            │ - Queue items │
+                            └───────────────┘
 ```
 
 ### How Sync Works
@@ -122,6 +288,7 @@ This connector was developed and tested in the following environment:
 | **URL** | https://hartzell.app |
 | **Type** | On-Premise (hosted on AWS) |
 | **API** | REST API via Inbound Webhook |
+| **Data** | 560 Contacts, 81 Companies, 74 Deals, 8 Products |
 
 ### Python Environment
 
@@ -254,6 +421,15 @@ The inbound webhook allows the connector to read/write data to Bitrix24.
 5. Copy the webhook URL (looks like `https://your-domain.com/rest/1/abc123xyz/`)
 6. Paste into `config.py` as `BITRIX24_WEBHOOK`
 
+### Webhook Permissions Reference
+
+| Scope | Purpose | Required |
+|-------|---------|----------|
+| `crm` | Contacts, Companies, Deals, Products | Yes |
+| `catalog` | Product catalog access | Recommended |
+| `user` | User info for SalesRep mapping | Optional |
+| `task` | Task management | Optional |
+
 ### Creating an Outbound Webhook (Optional)
 
 The outbound webhook enables real-time sync from Bitrix24 to QuickBooks. **This is optional** - without it, Bitrix24 changes sync on the next polling interval.
@@ -366,36 +542,198 @@ nssm start QBBitrixConnector
 
 ## Data Mapping
 
-### QuickBooks Customer → Bitrix24 Contact/Company
+### QuickBooks Customer ↔ Bitrix24 Contact/Company
 
-| QB Field | Bitrix24 Field | Notes |
-|----------|----------------|-------|
-| `Name` | `NAME` / `TITLE` | Split for contacts, full for companies |
-| `FirstName` | `NAME` | Contact first name |
-| `LastName` | `LAST_NAME` | Contact last name |
-| `CompanyName` | `COMPANY_TITLE` | Creates Company if present |
-| `Email` | `EMAIL` | Array format in Bitrix24 |
-| `Phone` | `PHONE` | Array format in Bitrix24 |
-| `ListID` | `SOURCE_DESCRIPTION` | Stored for mapping |
+| QB Field | Bitrix24 Field | Type | Notes |
+|----------|----------------|------|-------|
+| `ListID` | `SOURCE_DESCRIPTION` | IDTYPE | Stored for mapping |
+| `Name` | `NAME` / `TITLE` | STRTYPE(41) | Split for contacts |
+| `FirstName` | `NAME` | STRTYPE(25) | Contact first name |
+| `LastName` | `LAST_NAME` | STRTYPE(25) | Contact last name |
+| `CompanyName` | `COMPANY_TITLE` | STRTYPE(41) | Creates Company |
+| `Email` | `EMAIL` | STRTYPE(1023) | Array in Bitrix24 |
+| `Phone` | `PHONE` | STRTYPE(21) | Array in Bitrix24 |
+| `BillAddress.Addr1` | `ADDRESS` | ADDRESS | Street address |
+| `BillAddress.City` | `ADDRESS_CITY` | STRTYPE(31) | City |
+| `BillAddress.State` | `ADDRESS_PROVINCE` | STRTYPE(21) | State/Province |
+| `BillAddress.PostalCode` | `ADDRESS_POSTAL_CODE` | STRTYPE(13) | ZIP/Postal |
+| `SalesRepRef` | `ASSIGNED_BY_ID` | REF | Sales rep mapping |
+| `CustomerTypeRef` | `TYPE_ID` | REF | Category |
+| `Balance` | N/A | AMTTYPE | Read-only in QB |
+| `CreditLimit` | N/A | AMTTYPE | No Bitrix24 equivalent |
 
-### QuickBooks Invoice → Bitrix24 Deal
+### QuickBooks Invoice ↔ Bitrix24 Deal
 
-| QB Field | Bitrix24 Field | Notes |
-|----------|----------------|-------|
-| `RefNumber` | `TITLE` | "Invoice {RefNumber}" |
-| `Subtotal` | `OPPORTUNITY` | Deal amount |
-| `TxnID` | `COMMENTS` | Stored for mapping |
-| `IsPaid` | `STAGE_ID` | WON if paid, EXECUTING if balance |
-| `CustomerRef` | `COMPANY_ID` | Linked via ID mapping |
+| QB Field | Bitrix24 Field | Type | Notes |
+|----------|----------------|------|-------|
+| `TxnID` | `COMMENTS` | IDTYPE | Stored for mapping |
+| `RefNumber` | `TITLE` | STRTYPE(11) | "Invoice {RefNumber}" |
+| `TxnDate` | `DATE_CREATE` | DATETYPE | Invoice date |
+| `DueDate` | `CLOSEDATE` | DATETYPE | Due date |
+| `Subtotal` | `OPPORTUNITY` | AMTTYPE | Deal amount |
+| `BalanceRemaining` | N/A | AMTTYPE | Calculated field |
+| `IsPaid` | `STAGE_ID` | BOOLTYPE | WON if paid |
+| `CustomerRef` | `COMPANY_ID` | REF | Linked via ID map |
+| `SalesRepRef` | `ASSIGNED_BY_ID` | REF | Sales rep |
+| `InvoiceLineRet` | Product rows | LIST | Line items |
 
-### QuickBooks Item → Bitrix24 Product
+### QuickBooks Item ↔ Bitrix24 Product
 
-| QB Field | Bitrix24 Field | Notes |
-|----------|----------------|-------|
-| `Name` | `NAME` | Product name |
-| `Description` | `DESCRIPTION` | Product description |
-| `Price` | `PRICE` | Numeric price |
-| `ListID` | `XML_ID` | `QB_{ListID}` format |
+| QB Field | Bitrix24 Field | Type | Notes |
+|----------|----------------|------|-------|
+| `ListID` | `XML_ID` | IDTYPE | `QB_{ListID}` format |
+| `Name` | `NAME` | STRTYPE(31) | Product name |
+| `FullName` | `CODE` | STRTYPE | Full hierarchical name |
+| `SalesDesc` | `DESCRIPTION` | STRTYPE(4095) | Description |
+| `SalesPrice` | `PRICE` | PRICETYPE | Price |
+| `IsActive` | `ACTIVE` | BOOLTYPE | Active status |
+| `ParentRef` | `SECTION_ID` | REF | Category mapping |
+
+---
+
+## Field Reference
+
+### Customer Entity - All 57 Fields
+
+```
+Core Identifiers:
+  ListID              IDTYPE          [READONLY] Unique QB identifier
+  TimeCreated         DATETIMETYPE    [READONLY] Record creation timestamp
+  TimeModified        DATETIMETYPE    [READONLY] Last modification
+  EditSequence        STRTYPE         [READONLY] Revision number
+
+Basic Info:
+  Name                STRTYPE(41)     [REQUIRED] Short name (unique)
+  FullName            STRTYPE(209)    [READONLY] Full hierarchical name
+  IsActive            BOOLTYPE        Active/Inactive status
+  Sublevel            INTTYPE         [READONLY] Nesting level
+
+Company/Contact:
+  CompanyName         STRTYPE(41)     Company name
+  Salutation          STRTYPE(15)     Mr., Mrs., Ms., etc.
+  FirstName           STRTYPE(25)     Contact first name
+  MiddleName          STRTYPE(5)      Middle name/initial
+  LastName            STRTYPE(25)     Contact last name
+  Suffix              STRTYPE(10)     Jr., Sr., III, etc.
+  JobTitle            STRTYPE(41)     Job title
+
+Communication:
+  Phone               STRTYPE(21)     Primary phone
+  AltPhone            STRTYPE(21)     Alternate phone
+  Fax                 STRTYPE(21)     Fax number
+  Email               STRTYPE(1023)   Email address
+  Cc                  STRTYPE(1023)   CC email addresses
+  Contact             STRTYPE(41)     Primary contact name
+  AltContact          STRTYPE(41)     Alternate contact name
+
+Addresses:
+  BillAddress         ADDRESS         Billing address (nested)
+  BillAddressBlock    ADDRESSBLOCK    Formatted billing block
+  ShipAddress         ADDRESS         Shipping address (nested)
+  ShipAddressBlock    ADDRESSBLOCK    Formatted shipping block
+  ShipToAddress       LIST            Multiple ship-to addresses
+
+Financial:
+  Balance             AMTTYPE         [READONLY] Current balance
+  TotalBalance        AMTTYPE         [READONLY] Including sub-customers
+  OpenBalance         AMTTYPE         Opening balance
+  OpenBalanceDate     DATETYPE        Opening balance date
+  CreditLimit         AMTTYPE         Credit limit
+
+References:
+  ParentRef           REF             Parent customer (jobs/sub)
+  CustomerTypeRef     REF             Customer type category
+  TermsRef            REF             Payment terms
+  SalesRepRef         REF             Sales representative
+  SalesTaxCodeRef     REF             Sales tax code
+  ItemSalesTaxRef     REF             Default sales tax item
+  PreferredPaymentMethodRef  REF      Preferred payment
+  PriceLevelRef       REF             Price level
+  CurrencyRef         REF             Currency (multi-currency)
+  ClassRef            REF             Class (job costing)
+
+Job Info:
+  JobStatus           ENUMTYPE        Awarded/Closed/InProgress/etc.
+  JobStartDate        DATETYPE        Job start date
+  JobProjectedEndDate DATETYPE        Projected end date
+  JobEndDate          DATETYPE        Actual end date
+  JobDesc             STRTYPE(99)     Job description
+  JobTypeRef          REF             Job type
+
+Other:
+  Notes               STRTYPE(4095)   Notes/comments
+  AccountNumber       STRTYPE(99)     Customer account number
+  ResaleNumber        STRTYPE(15)     Resale certificate
+  PreferredDeliveryMethod  ENUMTYPE   None/Email/Fax/Mail
+  ExternalGUID        GUIDTYPE        External system GUID
+  TaxRegistrationNumber  STRTYPE(30)  Tax ID/VAT number
+  DataExtRet          LIST            Custom field values
+```
+
+### Invoice Entity - All 46 Fields
+
+```
+Core Identifiers:
+  TxnID               IDTYPE          [READONLY] Transaction ID
+  TimeCreated         DATETIMETYPE    [READONLY] Creation timestamp
+  TimeModified        DATETIMETYPE    [READONLY] Last modification
+  EditSequence        STRTYPE         [READONLY] Revision number
+  TxnNumber           INTTYPE         [READONLY] Transaction number
+
+Basic Info:
+  RefNumber           STRTYPE(11)     Invoice number
+  TxnDate             DATETYPE        Invoice date
+  DueDate             DATETYPE        Due date
+  ShipDate            DATETYPE        Ship date
+  PONumber            STRTYPE(25)     PO number
+  Memo                STRTYPE(4095)   Memo/notes
+
+Flags:
+  IsPending           BOOLTYPE        Is pending
+  IsFinanceCharge     BOOLTYPE        Is finance charge
+  IsPaid              BOOLTYPE        [READONLY] Is paid
+  IsToBeEmailed       BOOLTYPE        Email flag
+  IsToBePrinted       BOOLTYPE        Print flag
+  IsTaxIncluded       BOOLTYPE        Tax included
+
+Financial Totals:
+  Subtotal            AMTTYPE         [READONLY] Subtotal
+  SalesTaxTotal       AMTTYPE         [READONLY] Tax total
+  SalesTaxPercentage  PERCENTTYPE     [READONLY] Tax percentage
+  AppliedAmount       AMTTYPE         [READONLY] Applied amount
+  BalanceRemaining    AMTTYPE         [READONLY] Balance due
+  ExchangeRate        FLOATTYPE       Exchange rate
+  SuggestedDiscountAmount  AMTTYPE    [READONLY] Suggested discount
+  SuggestedDiscountDate    DATETYPE   [READONLY] Discount date
+
+References:
+  CustomerRef         REF             [REQUIRED] Customer
+  ClassRef            REF             Class (job costing)
+  ARAccountRef        REF             A/R account
+  TemplateRef         REF             Invoice template
+  TermsRef            REF             Payment terms
+  SalesRepRef         REF             Sales rep
+  ShipMethodRef       REF             Shipping method
+  ItemSalesTaxRef     REF             Sales tax item
+  CustomerMsgRef      REF             Customer message
+  CustomerSalesTaxCodeRef  REF        Customer tax code
+  CurrencyRef         REF             Currency
+
+Addresses:
+  BillAddress         ADDRESS         Billing address
+  ShipAddress         ADDRESS         Shipping address
+
+Line Items:
+  InvoiceLineRet      LIST            Invoice line items (nested)
+  InvoiceLineGroupRet LIST            Grouped line items
+  LinkedTxn           LIST            Related transactions
+
+Other:
+  FOB                 STRTYPE(13)     FOB point
+  Other               STRTYPE(29)     Other field
+  ExternalGUID        GUIDTYPE        External GUID
+  DataExtRet          LIST            Custom fields
+```
 
 ---
 
@@ -464,6 +802,13 @@ print(client.get_contacts())
 "
 ```
 
+### Testing Data Discovery
+
+```bash
+# Run the data discovery script to see current Bitrix24 data
+"C:\Program Files (x86)\Python311-32\python.exe" C:\Users\max\qb-bitrix-connector\data_discovery.py
+```
+
 ---
 
 ## File Structure
@@ -479,6 +824,8 @@ qb-bitrix-connector/
 ├── bitrix24_client.py         # REST API client for Bitrix24
 ├── bitrix24_webhook_handler.py # Handles incoming Bitrix24 webhooks
 ├── database.py                # SQLite database for sync state
+├── qb_schema_extractor.py     # Complete QB field schema (35 entities, 700+ fields)
+├── data_discovery.py          # Bitrix24 data discovery script
 ├── qb_bitrix_connector.qwc    # Web Connector configuration file
 ├── run_connector.bat          # Windows batch file to start service
 ├── sync_state.db              # SQLite database (created on first run)
@@ -534,6 +881,34 @@ POST http://localhost:8080/bitrix24/webhook
 
 Receives event notifications from Bitrix24 outbound webhooks.
 
+### Schema Export Endpoint
+
+```
+GET http://localhost:8080/schema
+```
+
+Returns the complete QuickBooks schema as JSON (35 entities, 700+ fields).
+
+---
+
+## Utilities
+
+### Schema Extractor
+
+View all QuickBooks entities and their fields:
+
+```bash
+"C:\Program Files (x86)\Python311-32\python.exe" C:\Users\max\qb-bitrix-connector\qb_schema_extractor.py
+```
+
+### Data Discovery
+
+Analyze current Bitrix24 data:
+
+```bash
+"C:\Program Files (x86)\Python311-32\python.exe" C:\Users\max\qb-bitrix-connector\data_discovery.py
+```
+
 ---
 
 ## License
@@ -554,7 +929,10 @@ For issues and questions:
 ### v1.0.0 (2025-11-26)
 - Initial release
 - QuickBooks Desktop Enterprise 24.0 support
-- Bitrix24 on-premise support
+- Bitrix24 on-premise support (hartzell.app)
 - Bi-directional sync for customers, items, invoices
 - SQLite-based sync state tracking
 - Web Connector SOAP interface
+- Complete qbXML schema documentation (35 entities, 719 fields)
+- Data discovery utility for Bitrix24 analysis
+- Live data: 560 contacts, 81 companies, 74 deals, 8 products ready to sync
