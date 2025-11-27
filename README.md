@@ -72,30 +72,12 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph Step1["<b>STEP 1: Web Connector Polls</b>"]
-        WC["QuickBooks Web Connector<br/>checks for updates<br/>(every few minutes)"]
-    end
+    Step1["<b>1. POLL</b><br/>Web Connector checks for updates<br/>(every few minutes)"]
+    Step2["<b>2. PROCESS</b><br/>Check for changes, map IDs,<br/>queue pending updates"]
+    Step3["<b>3. SYNC</b><br/>Push QB changes → Bitrix24<br/>Push Bitrix24 changes → QB"]
+    Step4[("<b>4. SAVE</b><br/>Store sync state<br/>in SQLite database")]
 
-    subgraph Step2["<b>STEP 2: Connector Processes</b>"]
-        direction LR
-        Check["Check for<br/>changes"]
-        Map["Map IDs<br/>between systems"]
-        Queue["Queue any<br/>pending updates"]
-    end
-
-    subgraph Step3["<b>STEP 3: Data Syncs Both Ways</b>"]
-        direction LR
-        ToB["Push QB changes<br/>→ Bitrix24"]
-        ToQ["Push Bitrix24 changes<br/>→ QuickBooks"]
-    end
-
-    subgraph Step4["<b>STEP 4: Save State</b>"]
-        DB[("SQLite Database<br/>remembers what synced")]
-    end
-
-    Step1 --> Step2
-    Step2 --> Step3
-    Step3 --> Step4
+    Step1 --> Step2 --> Step3 --> Step4
     Step4 -.->|"repeat"| Step1
 ```
 
@@ -294,64 +276,7 @@ The connector supports **35 QuickBooks entities** with **719+ fields** based on 
 
 ## Architecture
 
-```
-┌─────────────────────┐                              ┌─────────────────────┐
-│                     │                              │                     │
-│  QuickBooks Desktop │                              │  Bitrix24 CRM       │
-│  Enterprise 24.0    │                              │  (On-Premise/Cloud) │
-│                     │                              │                     │
-└──────────┬──────────┘                              └──────────┬──────────┘
-           │                                                    │
-           │ qbXML/SOAP                              REST API   │
-           │ (via Web Connector)                    (webhooks)  │
-           │                                                    │
-           ▼                                                    ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                                                                          │
-│                    QB-Bitrix24 Connector Service                         │
-│                    (Python/Flask on localhost:8080)                      │
-│                                                                          │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────┐  │
-│  │ SOAP Service    │  │ Sync Manager    │  │ Bitrix24 Client         │  │
-│  │ (Web Connector) │  │ (Orchestration) │  │ (REST API)              │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────────────────┘  │
-│                                                                          │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────┐  │
-│  │ qbXML Builder   │  │ qbXML Parser    │  │ SQLite Database         │  │
-│  │ (Request Gen)   │  │ (Response Parse)│  │ (Sync State/ID Maps)    │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────────────────┘  │
-│                                                                          │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
-### Data Flow
-
-```
-                    ┌─────────────────────────────────────┐
-                    │         SYNC FLOW DIAGRAM           │
-                    └─────────────────────────────────────┘
-
-    BITRIX24                    CONNECTOR                    QUICKBOOKS
-    ────────                    ─────────                    ──────────
-
-    560 Contacts ─────────────► Customer Sync ◄───────────── Customers
-     81 Companies ────────────►     ↑↓        ◄───────────── (with jobs)
-                                    │
-     74 Deals ────────────────► Invoice/Est Sync ◄────────── Invoices
-      4 Invoices ─────────────►     ↑↓         ◄────────── Estimates
-                                    │
-      8 Products ─────────────► Item Sync ◄───────────────── Items
-                                    ↑↓                       (Service)
-                                    │
-     41 Users ────────────────► SalesRep Map ◄────────────── SalesReps
-                                    │
-                            ┌───────┴───────┐
-                            │ SQLite DB     │
-                            │ - ID mappings │
-                            │ - Sync state  │
-                            │ - Queue items │
-                            └───────────────┘
-```
+See the [Technical Architecture](#technical-architecture) diagram in the Visual Guide above for a detailed view of the system components.
 
 ### How Sync Works
 
